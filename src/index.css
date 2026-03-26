@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  /* Background */
+  --color-bg-primary: #0a0a0f;
+  --color-bg-card: #13131a;
+  --color-bg-card-hover: #1a1a24;
+  --color-bg-sidebar: #0e0e14;
+  --color-bg-command: #0d0d13;
+  --color-bg-motion: #0c0c12;
+
+  /* Borders */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-focus: rgba(255, 255, 255, 0.2);
+
+  /* Text */
+  --color-text-primary: #e0e0e8;
+  --color-text-secondary: #8888a0;
+  --color-text-muted: #555568;
+  --color-text-bright: #f0f0f8;
+
+  /* Type Badge Colors */
+  --color-type-claim: #5b8abf;
+  --color-type-warrant: #c4973b;
+  --color-type-impact: #b94a4a;
+  --color-type-refutation: #4a9e6e;
+  --color-type-characterization: #8b6fc0;
+  --color-type-extension: #3d9e9e;
+
+  /* Status */
+  --color-clash-line: #c75a3a;
+  --color-must-respond: #d4a030;
+
+  /* Fonts */
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'DM Sans', 'Satoshi', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Mark mode pulsing border */
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.3); }
+  50% { border-color: rgba(255, 255, 255, 0.7); }
+}
+
+.mark-mode {
+  animation: pulse-border 1.2s ease-in-out infinite;
+}
+
+/* Node offset transition */
+.node-offset {
+  transition: transform 150ms ease;
+}
