@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useRoundStore } from '../store';
-import type { LedgerFile } from '../types';
+import type { LedgerFile, NodeType } from '../types';
+import { SPEAKER_NUMBER } from '../types';
 
 interface OverlayControls {
   setShowHelp: (show: boolean) => void;
@@ -20,6 +21,53 @@ export function useKeyboard(controls: OverlayControls) {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
+      // Handle classification mode keyboard shortcuts
+      if (state.classifyingNodeId && !isInput) {
+        const classifyingNode = state.getNodeById(state.classifyingNodeId);
+        if (classifyingNode) {
+          // Type classification keys
+          const typeMap: Record<string, NodeType> = {
+            c: 'claim', w: 'warrant', i: 'impact',
+            r: 'refutation', h: 'characterization', e: 'extension',
+          };
+          if (typeMap[e.key]) {
+            e.preventDefault();
+            state.classifyNodeType(state.classifyingNodeId, typeMap[e.key]);
+            return;
+          }
+
+          // Speaker classification: number keys 1-8
+          const num = parseInt(e.key);
+          if (num >= 1 && num <= 8 && SPEAKER_NUMBER[num]) {
+            e.preventDefault();
+            state.classifyNodeSpeaker(state.classifyingNodeId, SPEAKER_NUMBER[num]);
+            return;
+          }
+
+          // Escape exits classification
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            state.setClassifyingNode(null);
+            return;
+          }
+
+          // Enter confirms and exits classification
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            state.setClassifyingNode(null);
+            return;
+          }
+
+          // / jumps back to command bar while classifying
+          if (e.key === '/') {
+            e.preventDefault();
+            state.setClassifyingNode(null);
+            state.setCommandBarFocused(true);
+            return;
+          }
+        }
+      }
+
       // Always handle Escape
       if (e.key === 'Escape') {
         if (showWeighing) {
@@ -32,6 +80,10 @@ export function useKeyboard(controls: OverlayControls) {
         }
         if (showHelp) {
           setShowHelp(false);
+          return;
+        }
+        if (state.linkSearchNodeId) {
+          state.setLinkSearchNode(null);
           return;
         }
         if (state.markModeNodeId) {
@@ -75,6 +127,12 @@ export function useKeyboard(controls: OverlayControls) {
             e.preventDefault();
             state.setSidebarMode('speech-prep');
             return;
+          case 'w':
+            if (!isInput) {
+              e.preventDefault();
+              state.setSidebarMode('whip-check');
+            }
+            return;
           case 'x':
             if (!isInput) {
               e.preventDefault();
@@ -84,7 +142,6 @@ export function useKeyboard(controls: OverlayControls) {
           case 'e':
             if (!isInput) {
               e.preventDefault();
-              // Export .ledger file
               const data = state.exportLedger();
               const json = JSON.stringify(data, null, 2);
               const blob = new Blob([json], { type: 'application/json' });
@@ -102,7 +159,6 @@ export function useKeyboard(controls: OverlayControls) {
           case 'o':
             if (!isInput) {
               e.preventDefault();
-              // Import .ledger file
               const input = document.createElement('input');
               input.type = 'file';
               input.accept = '.ledger,.json';
@@ -174,7 +230,6 @@ export function useKeyboard(controls: OverlayControls) {
           state.moveFocusH('left');
           return;
         case 'l': {
-          // If in mark mode, create a link
           if (state.markModeNodeId) {
             const focusedNode = state.getFocusedNode();
             if (focusedNode && focusedNode.id !== state.markModeNodeId) {
@@ -205,7 +260,7 @@ export function useKeyboard(controls: OverlayControls) {
           return;
         }
 
-        // Column jumps
+        // Column jumps (only when not classifying)
         case '1': state.jumpToColumn(0); return;
         case '2': state.jumpToColumn(1); return;
         case '3': state.jumpToColumn(2); return;
@@ -222,7 +277,7 @@ export function useKeyboard(controls: OverlayControls) {
           if (node) state.toggleFlagged(node.id);
           return;
         }
-        case 'D': { // Shift+D
+        case 'D': {
           const node = state.getFocusedNode();
           if (node) state.toggleDropped(node.id);
           return;
@@ -237,6 +292,25 @@ export function useKeyboard(controls: OverlayControls) {
           if (node) state.setMarkMode(node.id);
           return;
         }
+
+        // 't' - classify focused node
+        case 't': {
+          const node = state.getFocusedNode();
+          if (node) {
+            state.setClassifyingNode(state.classifyingNodeId === node.id ? null : node.id);
+          }
+          return;
+        }
+
+        // 'L' (shift+l) - open link search for focused node
+        case 'L': {
+          const node = state.getFocusedNode();
+          if (node) {
+            state.setLinkSearchNode(state.linkSearchNodeId === node.id ? null : node.id);
+          }
+          return;
+        }
+
         case 'x':
         case 'Delete': {
           const node = state.getFocusedNode();
@@ -248,12 +322,10 @@ export function useKeyboard(controls: OverlayControls) {
           return;
         }
         case 'Enter': {
-          // Trigger inline editing on the focused node
           const node = state.getFocusedNode();
           if (node) {
             const el = document.querySelector(`[data-node-id="${node.id}"]`);
             if (el) {
-              // Find the text span (the one displaying rendered content, not the type badge)
               const contentDiv = el.querySelector('.flex-1.min-w-0');
               const textEl = contentDiv?.querySelector('span');
               if (textEl) {

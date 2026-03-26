@@ -28,6 +28,21 @@ export const TYPE_COLORS: Record<NodeType, string> = {
   extension: '#3d9e9e',
 };
 
+// Team colors for visual distinction
+export const TEAM_COLORS: Record<Team, string> = {
+  OG: '#4a90d9',
+  OO: '#d94a4a',
+  CG: '#3db89a',
+  CO: '#d4a030',
+};
+
+export const TEAM_BG_COLORS: Record<Team, string> = {
+  OG: '#4a90d910',
+  OO: '#d94a4a10',
+  CG: '#3db89a10',
+  CO: '#d4a03010',
+};
+
 export const SPEAKER_TO_TEAM: Record<Speaker, Team> = {
   PM: 'OG', DPM: 'OG',
   LO: 'OO', DLO: 'OO',
@@ -44,12 +59,18 @@ export const TEAM_SPEAKERS: Record<Team, [Speaker, Speaker]> = {
 
 export const SPEAKER_ORDER: Speaker[] = ['PM', 'LO', 'DPM', 'DLO', 'MG', 'MO', 'GW', 'OW'];
 
+// Speaker number mapping for keyboard shortcuts (1-8)
+export const SPEAKER_NUMBER: Record<number, Speaker> = {
+  1: 'PM', 2: 'LO', 3: 'DPM', 4: 'DLO',
+  5: 'MG', 6: 'MO', 7: 'GW', 8: 'OW',
+};
+
 export const TEAMS: Team[] = ['OG', 'OO', 'CG', 'CO'];
 
 export interface ArgumentNode {
   id: string;
-  speaker: Speaker;
-  type: NodeType;
+  speaker: Speaker | null; // null = unclassified
+  type: NodeType | null; // null = unclassified
   text: string;
   vOffset: number;
   flagged: boolean;
@@ -123,7 +144,7 @@ export interface LedgerFile {
   speechPrep: SpeechPrep;
 }
 
-export type SidebarMode = 'clash-log' | 'speech-prep' | 'weighing' | 'hidden';
+export type SidebarMode = 'clash-log' | 'speech-prep' | 'weighing' | 'whip-check' | 'hidden';
 
 // Navigation focus
 export interface FocusState {

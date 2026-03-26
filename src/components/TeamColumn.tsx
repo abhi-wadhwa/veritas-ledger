@@ -1,5 +1,5 @@
 import type { Team } from '../types';
-import { TEAM_SPEAKERS } from '../types';
+import { TEAM_SPEAKERS, TEAM_COLORS } from '../types';
 import { SpeakerSection } from './SpeakerSection';
 
 interface Props {
@@ -16,6 +16,7 @@ const TEAM_LABELS: Record<Team, string> = {
 
 export function TeamColumn({ team, columnIndex }: Props) {
   const [topSpeaker, bottomSpeaker] = TEAM_SPEAKERS[team];
+  const teamColor = TEAM_COLORS[team];
 
   return (
     <div
@@ -24,13 +25,19 @@ export function TeamColumn({ team, columnIndex }: Props) {
     >
       {/* Team header */}
       <div
-        className="flex items-center justify-center px-2 py-1.5"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        className="flex items-center justify-center px-2 py-1"
+        style={{
+          borderBottom: `2px solid ${teamColor}40`,
+          background: `${teamColor}08`,
+        }}
       >
-        <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: '#555568' }}>
+        <span
+          className="text-[10px] font-mono uppercase tracking-widest font-bold"
+          style={{ color: teamColor }}
+        >
           {team}
         </span>
-        <span className="text-[9px] ml-2 font-sans hidden lg:inline" style={{ color: '#555568' }}>
+        <span className="text-[9px] ml-2 font-sans hidden lg:inline" style={{ color: `${teamColor}90` }}>
           {TEAM_LABELS[team]}
         </span>
       </div>

@@ -21,8 +21,8 @@ export function ExtensionAuditOverlay({ onClose }: Props) {
   const auditTeam = (closingTeam: Team, openingTeam: Team) => {
     const closingSpeakers = TEAM_SPEAKERS[closingTeam];
     const openingSpeakers = TEAM_SPEAKERS[openingTeam];
-    const openingNodes = nodes.filter((n) => openingSpeakers.includes(n.speaker));
-    const closingNodes = nodes.filter((n) => closingSpeakers.includes(n.speaker));
+    const openingNodes = nodes.filter((n) => n.speaker && openingSpeakers.includes(n.speaker));
+    const closingNodes = nodes.filter((n) => n.speaker && closingSpeakers.includes(n.speaker));
 
     // Find extension links from closing to opening
     const extensionLinks = links.filter(

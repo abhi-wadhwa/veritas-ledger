@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useRoundStore } from '../store';
 import { parseCommand, parsePoi, getPreview } from '../utils/commandParser';
-import { TYPE_COLORS } from '../types';
+import { TYPE_COLORS, SPEAKER_ORDER, SPEAKER_TO_TEAM, TEAM_COLORS } from '../types';
 
 export function CommandBar() {
   const [input, setInput] = useState('');
@@ -9,13 +9,18 @@ export function CommandBar() {
   const commandBarFocused = useRoundStore((s) => s.commandBarFocused);
   const setCommandBarFocused = useRoundStore((s) => s.setCommandBarFocused);
   const addNode = useRoundStore((s) => s.addNode);
+  const addQuickNode = useRoundStore((s) => s.addQuickNode);
   const addLink = useRoundStore((s) => s.addLink);
   const addPoi = useRoundStore((s) => s.addPoi);
   const pushCommandHistory = useRoundStore((s) => s.pushCommandHistory);
   const commandHistory = useRoundStore((s) => s.commandHistory);
+  const currentSpeaker = useRoundStore((s) => s.currentSpeaker);
   const [historyIdx, setHistoryIdx] = useState(-1);
 
   const preview = getPreview(input);
+  const activeSpeaker = SPEAKER_ORDER[currentSpeaker];
+  const activeTeam = SPEAKER_TO_TEAM[activeSpeaker];
+  const teamColor = TEAM_COLORS[activeTeam];
 
   useEffect(() => {
     if (commandBarFocused && inputRef.current) {
@@ -24,6 +29,8 @@ export function CommandBar() {
   }, [commandBarFocused]);
 
   const handleSubmit = () => {
+    if (!input.trim()) return;
+
     // Try POI first
     const poi = parsePoi(input);
     if (poi) {
@@ -34,27 +41,26 @@ export function CommandBar() {
       return;
     }
 
+    // Try structured command (pm c text)
     const parsed = parseCommand(input);
-    if (!parsed) return;
-
-    const node = addNode(parsed.speaker, parsed.type, parsed.content);
-
-    // Handle refutation linking
-    if (parsed.refTarget) {
-      const targetNode = useRoundStore.getState().resolveNodeRef(parsed.refTarget);
-      if (targetNode) {
-        addLink(targetNode.id, node.id, 'clash');
+    if (parsed) {
+      const node = addNode(parsed.speaker, parsed.type, parsed.content);
+      if (parsed.refTarget) {
+        const targetNode = useRoundStore.getState().resolveNodeRef(parsed.refTarget);
+        if (targetNode) addLink(targetNode.id, node.id, 'clash');
       }
+      if (parsed.extSource) {
+        const sourceNode = useRoundStore.getState().resolveNodeRef(parsed.extSource);
+        if (sourceNode) addLink(sourceNode.id, node.id, 'extension');
+      }
+      pushCommandHistory(input);
+      setInput('');
+      setHistoryIdx(-1);
+      return;
     }
 
-    // Handle extension linking
-    if (parsed.extSource) {
-      const sourceNode = useRoundStore.getState().resolveNodeRef(parsed.extSource);
-      if (sourceNode) {
-        addLink(sourceNode.id, node.id, 'extension');
-      }
-    }
-
+    // Quick note: just text, auto-assign to current speaker, unclassified type
+    addQuickNode(input.trim());
     pushCommandHistory(input);
     setInput('');
     setHistoryIdx(-1);
@@ -96,25 +102,29 @@ export function CommandBar() {
   const parsed = parseCommand(input);
   const poiParsed = parsePoi(input);
   const typeColor = parsed ? TYPE_COLORS[parsed.type] : undefined;
-  const isValidCommand = parsed || poiParsed;
+  const isStructuredCommand = parsed || poiParsed;
 
   return (
     <div
       className="flex items-center gap-2 px-3 py-2"
       style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: '#0d0d13' }}
     >
-      {/* Prompt indicator */}
-      <span className="font-mono text-sm shrink-0" style={{ color: '#555568' }}>/</span>
+      {/* Active speaker indicator */}
+      <span
+        className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
+        style={{ color: teamColor, backgroundColor: `${teamColor}18` }}
+      >
+        {activeSpeaker}
+      </span>
 
-      {/* Ghost preview */}
-      {preview.speakerLabel && !parsed && !poiParsed && (
+      {/* Ghost preview for structured commands */}
+      {preview.speakerLabel && !parsed && !poiParsed && input.trim() && (
         <span className="text-xs font-mono shrink-0" style={{ color: preview.isPoi ? '#4a9e6e' : '#555568' }}>
           [{preview.speakerLabel}
           {preview.typeLabel && ` → ${preview.typeLabel}`}]
         </span>
       )}
 
-      {/* Valid command indicator */}
       {parsed && (
         <span
           className="text-xs font-mono shrink-0 px-1 rounded"
@@ -124,7 +134,6 @@ export function CommandBar() {
         </span>
       )}
 
-      {/* POI indicator */}
       {poiParsed && (
         <span
           className="text-xs font-mono shrink-0 px-1 rounded"
@@ -139,7 +148,7 @@ export function CommandBar() {
         ref={inputRef}
         className="flex-1 bg-transparent text-sm font-mono outline-none"
         style={{ color: '#e0e0e8' }}
-        placeholder={commandBarFocused ? 'pm c globalization increases poverty...' : 'Press / to start flowing...'}
+        placeholder={commandBarFocused ? `Type to flow ${activeSpeaker}... (Enter to submit, or use: pm c <text>)` : 'Press / to flow...'}
         value={input}
         onChange={(e) => {
           setInput(e.target.value);
@@ -155,7 +164,7 @@ export function CommandBar() {
       {/* Submit hint */}
       {input && (
         <span className="text-[10px] font-mono shrink-0" style={{ color: '#555568' }}>
-          {isValidCommand ? '↵ submit' : 'syntax: [speaker] [type] [text] or poi [from] [to] [a/d]'}
+          {isStructuredCommand ? '↵ submit' : '↵ quick note'}
         </span>
       )}
     </div>

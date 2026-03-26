@@ -4,7 +4,7 @@ import type {
   FocusState, SidebarMode, SpeechPrep, RoundMeta,
   TeamInfo, POI, Weighing, LedgerFile,
 } from '../types';
-import { TEAM_SPEAKERS, TEAMS, SPEAKER_ORDER } from '../types';
+import { TEAM_SPEAKERS, TEAMS, SPEAKER_ORDER, SPEAKER_TO_TEAM } from '../types';
 
 let nextNodeId = 1;
 let nextLinkId = 1;
@@ -36,6 +36,8 @@ interface RoundStore {
   showAllLinks: boolean;
   dropsOnlyFilter: boolean;
   markModeNodeId: string | null;
+  classifyingNodeId: string | null; // node currently being classified
+  linkSearchNodeId: string | null; // node currently linking from
 
   // Timer
   timerRunning: boolean;
@@ -53,7 +55,10 @@ interface RoundStore {
   setMeta: (meta: Partial<RoundMeta>) => void;
   setTeamName: (team: Team, name: string) => void;
 
-  addNode: (speaker: Speaker, type: NodeType, text: string, extendsId?: string) => ArgumentNode;
+  addNode: (speaker: Speaker | null, type: NodeType | null, text: string, extendsId?: string) => ArgumentNode;
+  addQuickNode: (text: string) => ArgumentNode;
+  classifyNodeSpeaker: (id: string, speaker: Speaker) => void;
+  classifyNodeType: (id: string, type: NodeType) => void;
   updateNodeText: (id: string, text: string) => void;
   deleteNode: (id: string) => void;
   toggleFlagged: (id: string) => void;
@@ -97,6 +102,10 @@ interface RoundStore {
   toggleShowAllLinks: () => void;
   toggleDropsOnlyFilter: () => void;
 
+  // Classification mode
+  setClassifyingNode: (nodeId: string | null) => void;
+  setLinkSearchNode: (nodeId: string | null) => void;
+
   // Command history
   pushCommandHistory: (cmd: string) => void;
 
@@ -111,10 +120,13 @@ interface RoundStore {
 
   // Helpers
   getNodesForSpeaker: (speaker: Speaker) => ArgumentNode[];
+  getUnclassifiedNodes: () => ArgumentNode[];
   getFocusedNode: () => ArgumentNode | null;
   getNodeById: (id: string) => ArgumentNode | undefined;
   getNodeNumber: (id: string) => number;
   resolveNodeRef: (ref: string) => ArgumentNode | null;
+  getLinksForNode: (id: string) => ClashLink[];
+  getUnrefutedClaims: (team: Team) => ArgumentNode[];
 }
 
 function createSnapshot(state: { nodes: ArgumentNode[]; links: ClashLink[] }): HistoryEntry {
@@ -154,6 +166,8 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
   showAllLinks: false,
   dropsOnlyFilter: false,
   markModeNodeId: null,
+  classifyingNodeId: null,
+  linkSearchNodeId: null,
 
   timerRunning: false,
   timerSeconds: 0,
@@ -195,6 +209,40 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     return node;
   },
 
+  addQuickNode: (text) => {
+    const state = get();
+    // Auto-assign to current speaker
+    const currentSpeakerCode = SPEAKER_ORDER[state.currentSpeaker];
+    const id = `n${nextNodeId++}`;
+    const node: ArgumentNode = {
+      id,
+      speaker: currentSpeakerCode,
+      type: null, // unclassified type
+      text,
+      vOffset: 0,
+      flagged: false,
+      dropped: false,
+      mustRespond: false,
+      createdAt: new Date().toISOString(),
+    };
+    set((s) => ({
+      undoStack: [...s.undoStack, createSnapshot(s)],
+      redoStack: [],
+      nodes: [...s.nodes, node],
+      classifyingNodeId: id,
+    }));
+    return node;
+  },
+
+  classifyNodeSpeaker: (id, speaker) => set((s) => ({
+    nodes: s.nodes.map((n) => n.id === id ? { ...n, speaker } : n),
+  })),
+
+  classifyNodeType: (id, type) => set((s) => ({
+    nodes: s.nodes.map((n) => n.id === id ? { ...n, type } : n),
+    classifyingNodeId: null,
+  })),
+
   updateNodeText: (id, text) => set((s) => ({
     undoStack: [...s.undoStack, createSnapshot(s)],
     redoStack: [],
@@ -206,6 +254,7 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     redoStack: [],
     nodes: s.nodes.filter((n) => n.id !== id),
     links: s.links.filter((l) => l.source !== id && l.target !== id),
+    classifyingNodeId: s.classifyingNodeId === id ? null : s.classifyingNodeId,
   })),
 
   toggleFlagged: (id) => set((s) => ({
@@ -248,7 +297,6 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     if (newIdx < 0 || newIdx >= speakerNodes.length) return {};
     const reordered = [...speakerNodes];
     [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
-    // Reconstruct full node list preserving order of other speakers
     const result: ArgumentNode[] = [];
     let speakerIdx = 0;
     for (const n of s.nodes) {
@@ -296,14 +344,12 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
       if (state.focus.nodeIndex < speakerNodes.length - 1) {
         set({ focus: { ...state.focus, nodeIndex: state.focus.nodeIndex + 1 } });
       } else if (state.focus.speakerIndex === 0) {
-        // Move to second speaker
         set({ focus: { ...state.focus, speakerIndex: 1, nodeIndex: 0 } });
       }
     } else {
       if (state.focus.nodeIndex > 0) {
         set({ focus: { ...state.focus, nodeIndex: state.focus.nodeIndex - 1 } });
       } else if (state.focus.speakerIndex === 1) {
-        // Move to first speaker
         const topSpeaker = speakers[0];
         const topNodes = state.nodes.filter((n) => n.speaker === topSpeaker);
         set({
@@ -321,7 +367,7 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
 
   // Sidebar
   cycleSidebar: () => set((s) => {
-    const modes: SidebarMode[] = ['clash-log', 'speech-prep', 'weighing', 'hidden'];
+    const modes: SidebarMode[] = ['clash-log', 'speech-prep', 'weighing', 'whip-check', 'hidden'];
     const idx = modes.indexOf(s.sidebarMode);
     return { sidebarMode: modes[(idx + 1) % modes.length] };
   }),
@@ -333,7 +379,7 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     const next = direction === 'next'
       ? (s.currentSpeaker + 1) % len
       : (s.currentSpeaker - 1 + len) % len;
-    return { currentSpeaker: next };
+    return { currentSpeaker: next, timerSeconds: 0, timerRunning: false };
   }),
 
   // Timer
@@ -346,10 +392,22 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
   toggleShowAllLinks: () => set((s) => ({ showAllLinks: !s.showAllLinks })),
   toggleDropsOnlyFilter: () => set((s) => ({ dropsOnlyFilter: !s.dropsOnlyFilter })),
 
+  // Classification
+  setClassifyingNode: (nodeId) => set({ classifyingNodeId: nodeId }),
+  setLinkSearchNode: (nodeId) => set({ linkSearchNodeId: nodeId }),
+
   // POIs
   addPoi: (offeredBy, receivedBy, accepted, content) => {
     const id = `poi${nextPoiId++}`;
-    const poi: POI = { id, offeredBy, receivedBy, accepted, content, timestampInSpeech: '' };
+    const state = get();
+    const poi: POI = {
+      id,
+      offeredBy,
+      receivedBy,
+      accepted,
+      content,
+      timestampInSpeech: `${Math.floor(state.timerSeconds / 60)}:${(state.timerSeconds % 60).toString().padStart(2, '0')}`,
+    };
     set((s) => ({ pois: [...s.pois, poi] }));
   },
 
@@ -419,7 +477,6 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     };
   },
   importLedger: (data) => {
-    // Reset ID counters based on imported data
     const maxNodeId = data.nodes.reduce((max, n) => {
       const num = parseInt(n.id.replace('n', ''));
       return isNaN(num) ? max : Math.max(max, num);
@@ -481,6 +538,8 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
       showAllLinks: false,
       dropsOnlyFilter: false,
       markModeNodeId: null,
+      classifyingNodeId: null,
+      linkSearchNodeId: null,
       timerRunning: false,
       timerSeconds: 0,
       commandHistory: [],
@@ -492,6 +551,7 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
 
   // Helpers
   getNodesForSpeaker: (speaker) => get().nodes.filter((n) => n.speaker === speaker),
+  getUnclassifiedNodes: () => get().nodes.filter((n) => n.speaker === null || n.type === null),
   getFocusedNode: () => {
     const state = get();
     const team = TEAMS[state.focus.columnIndex];
@@ -508,14 +568,12 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
     return speakerNodes.findIndex((n) => n.id === id) + 1;
   },
   resolveNodeRef: (ref) => {
-    // Resolve "pm.1", "lo.3", "og.2" etc.
     const match = ref.match(/^(\w+)\.(\d+)$/);
     if (!match) return null;
     const [, code, numStr] = match;
     const num = parseInt(numStr);
     const speakerCode = code.toLowerCase();
 
-    // Try speaker code first
     const speakerMap: Record<string, Speaker> = {
       pm: 'PM', lo: 'LO', dpm: 'DPM', dlo: 'DLO',
       mg: 'MG', mo: 'MO', gw: 'GW', ow: 'OW',
@@ -526,15 +584,36 @@ export const useRoundStore = create<RoundStore>((set, get) => ({
       return speakerNodes[num - 1] ?? null;
     }
 
-    // Try team code
     const teamMap: Record<string, Team> = { og: 'OG', oo: 'OO', cg: 'CG', co: 'CO' };
     const team = teamMap[speakerCode];
     if (team) {
       const speakers = TEAM_SPEAKERS[team];
-      const teamNodes = get().nodes.filter((n) => speakers.includes(n.speaker));
+      const teamNodes = get().nodes.filter((n) => n.speaker && speakers.includes(n.speaker));
       return teamNodes[num - 1] ?? null;
     }
 
     return null;
+  },
+  getLinksForNode: (id) => get().links.filter((l) => l.source === id || l.target === id),
+  getUnrefutedClaims: (team) => {
+    const state = get();
+    const teamSpeakers = TEAM_SPEAKERS[team];
+    const teamNodes = state.nodes.filter(
+      (n) => n.speaker && teamSpeakers.includes(n.speaker) && (n.type === 'claim' || n.type === 'impact')
+    );
+    // A claim is "refuted" if any link points to it from a different team
+    return teamNodes.filter((node) => {
+      const incomingLinks = state.links.filter(
+        (l) => l.target === node.id || l.source === node.id
+      );
+      // Check if any linked node is from a different team
+      const hasResponseFromOtherTeam = incomingLinks.some((l) => {
+        const otherId = l.source === node.id ? l.target : l.source;
+        const otherNode = state.nodes.find((n) => n.id === otherId);
+        if (!otherNode || !otherNode.speaker) return false;
+        return SPEAKER_TO_TEAM[otherNode.speaker] !== team;
+      });
+      return !hasResponseFromOtherTeam;
+    });
   },
 }));

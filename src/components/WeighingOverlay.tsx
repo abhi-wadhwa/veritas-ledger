@@ -130,7 +130,7 @@ export function WeighingOverlay({ onClose }: Props) {
                 >
                   <span
                     className="text-[9px] font-mono font-bold px-1 rounded shrink-0"
-                    style={{ color: TYPE_COLORS[node.type], backgroundColor: `${TYPE_COLORS[node.type]}18` }}
+                    style={{ color: node.type ? TYPE_COLORS[node.type] : '#666', backgroundColor: node.type ? `${TYPE_COLORS[node.type]}18` : '#66661a' }}
                   >
                     {node.speaker}
                   </span>
